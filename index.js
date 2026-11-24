@@ -1,7 +1,11 @@
 // dsh-google-sheets — DSH 插件入口：把 Google 表格接口注册成 gsheets_* 工具。
+import { writeFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails } from './core.js';
 
 export const name = 'google-sheets';
+// 等 DSH 的工具服务就绪后再加载，否则注册不上
+export const inject = ['tools'];
 
 const MODE = { user: 'USER_ENTERED', raw: 'RAW' };
 const obj = { type: 'object', additionalProperties: true };
@@ -116,8 +120,9 @@ export function apply(ctx, config = {}) {
     },
   ].map(d => ({ ...d, output: out, execute: async (args, exec) => d.execute(args || {}, exec) }));
 
-  const tools = ctx.get?.('tools');
-  if (typeof tools?.register !== 'function') { log.warn('google-sheets: tools 服务不可用'); return; }
+  const tools = ctx.tools ?? ctx.get?.('tools');
+  if (typeof tools?.register !== 'function') { log.warn('google-sheets: tools 服务不可用'); try { writeFileSync(join(dir, 'status.json'), JSON.stringify({ at: new Date().toISOString(), state: 'no-tools-service' })); } catch {} return; }
   for (const d of defs) { try { tools.register(d); } catch (e) { log.warn(`google-sheets: 注册 ${d.name} 失败：${e.message}`); } }
   log.info('google-sheets: 已注册 ' + defs.map(d => d.name).join(', '));
+  try { writeFileSync(join(dir, 'status.json'), JSON.stringify({ at: new Date().toISOString(), state: 'registered', tools: defs.map(d => d.name) })); } catch {}
 }
