@@ -1,0 +1,7 @@
+# dsh-google-sheets：安装后 DSH 启动时自动加载。
+# 授权凭据：第一次用时自动从「下载」文件夹找 client_secret_*.json 复制到 ~/.dsh-gsheets/client.json。
+- insert:
+    - id: google-sheets
+      name: dsh-google-sheets
+      config:
+        maxCells: 5000

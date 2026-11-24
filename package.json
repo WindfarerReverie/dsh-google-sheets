@@ -1,0 +1,38 @@
+{
+  "name": "dsh-google-sheets",
+  "version": "0.1.0",
+  "description": "Google Sheets for DeepSeek Harness (DSH): find, read (with notes & colors), write, append, create — every write is read back and verified. DSH 直连 Google 表格官方接口，写后自动回读核对。",
+  "type": "module",
+  "main": "index.js",
+  "files": [
+    "index.js",
+    "core.js",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh-plugin",
+    "google-sheets"
+  ],
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.3.0"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": ">=4.0.1"
+  },
+  "scripts": {
+    "test": "node test.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/WindfarerReverie/dsh-google-sheets.git"
+  },
+  "homepage": "https://windfarerreverie.github.io/dsh-google-sheets/"
+}
