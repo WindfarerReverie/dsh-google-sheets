@@ -36,9 +36,9 @@ export function apply(ctx, config = {}) {
 
   // 写入后立即回读三种形式比对
   async function verify(id, range, values) {
-    const [f, u, fo] = await Promise.all([g.get(id, range, 'FORMATTED_VALUE'), g.get(id, range, 'UNFORMATTED_VALUE'), g.get(id, range, 'FORMULA')]);
-    const bad = compareGrid(values, f.values, u.values, fo.values, rangeStart(range));
-    return { verified: bad.length === 0, mismatches: bad.slice(0, 50), readBack: f.values.slice(0, 20) };
+    const { fmt, raw, formula } = await g.grid(id, range);
+    const bad = compareGrid(values, fmt, raw, formula, rangeStart(range));
+    return { verified: bad.length === 0, mismatches: bad.slice(0, 50), readBack: fmt.slice(0, 20) };
   }
 
   const defs = [
@@ -88,17 +88,16 @@ export function apply(ctx, config = {}) {
         const id = sheetId(a.spreadsheet), q = quoteSheet(a.sheet), res = {};
         const keys = Object.entries(a.match || {}).map(([c, v]) => [c.toUpperCase().replace(/[^A-Z]/g, ''), v]);
         if (keys.length) {
-          const cols = await Promise.all(keys.map(([c]) => g.get(id, `${q}!${c}:${c}`, 'FORMATTED_VALUE')));
+          const cols = (await g.batchGet(id, keys.map(([c]) => `${q}!${c}:${c}`))).map(values => ({ values }));
           const n = Math.max(...cols.map(x => x.values.length));
           const rows = [];
           for (let i = 0; i < n; i++) if (keys.every(([, v], k) => norm(cols[k].values[i]?.[0]) === norm(v))) rows.push(i + 1);
           const show = (a.show || 'A:Z').toUpperCase().split(':');
-          const matches = [];
-          for (const row of rows.slice(0, 20)) {
-            const v = (await g.get(id, `${q}!${show[0]}${row}:${show[1] || show[0]}${row}`, 'FORMATTED_VALUE')).values[0] || [];
-            const o = {}; v.forEach((x, i) => { o[numToCol(colToNum(show[0]) + i)] = x; });
-            matches.push({ row, values: o });
-          }
+          const shown = await g.batchGet(id, rows.slice(0, 20).map(row => `${q}!${show[0]}${row}:${show[1] || show[0]}${row}`));
+          const matches = rows.slice(0, 20).map((row, k) => {
+            const o = {}; (shown[k]?.[0] || []).forEach((x, i) => { o[numToCol(colToNum(show[0]) + i)] = x; });
+            return { row, values: o };
+          });
           Object.assign(res, { count: rows.length, matches, note: rows.length === 1 ? '找到唯一一行' : rows.length ? '找到多行，先弄清是哪一行再写' : '没找到，不要写' });
         }
         if (a.next_empty) {
@@ -122,10 +121,9 @@ export function apply(ctx, config = {}) {
         const target = `${st.sheet ? st.sheet + '!' : ''}${cellName(st, 0, 0)}:${cellName(st, a.values.length - 1, width - 1)}`;
         const fo = (await g.get(id, target, 'FORMULA')).values;
         const expectCells = a.expect || {}, expectGot = {};
-        for (const cell of Object.keys(expectCells)) {
-          const c = cell.toUpperCase().replace(/^.*!/, '');
-          expectGot[cell.toUpperCase()] = (await g.get(id, `${st.sheet ? st.sheet + '!' : ''}${c}`, 'FORMATTED_VALUE')).values?.[0]?.[0];
-        }
+        const ek = Object.keys(expectCells);
+        const got = await g.batchGet(id, ek.map(cell => `${st.sheet ? st.sheet + '!' : ''}${cell.toUpperCase().replace(/^.*!/, '')}`));
+        ek.forEach((cell, i) => { expectGot[cell.toUpperCase()] = got[i]?.[0]?.[0]; });
         const problems = preWriteProblems({ range: a.range, values: a.values, formulas: fo, expectCells: Object.fromEntries(Object.entries(expectCells).map(([k, v]) => [k.toUpperCase(), v])), expectGot, allowFormula: !!a.allow_formula_overwrite });
         if (problems.length) return { written: false, verified: false, problems };
         const r = await g.update(id, a.range, a.values, MODE[a.mode] || MODE.user);

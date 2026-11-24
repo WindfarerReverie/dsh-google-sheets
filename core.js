@@ -193,6 +193,22 @@ export function api(getToken, fetchImpl = fetch) {
       const j = await call(`${SHEETS}/${id}/values/${enc(range)}?valueRenderOption=${render}&dateTimeRenderOption=FORMATTED_STRING`);
       return { range: j.range, values: j.values || [] };
     },
+    async batchGet(id, ranges, render = 'FORMATTED_VALUE') {
+      if (!ranges.length) return [];
+      const q = ranges.map(r => 'ranges=' + enc(r)).join('&');
+      const j = await call(`${SHEETS}/${id}/values:batchGet?${q}&valueRenderOption=${render}&dateTimeRenderOption=FORMATTED_STRING`);
+      return (j.valueRanges || []).map(v => v.values || []);
+    },
+    // 一次读回格子的显示值、实际值、公式（写后核对用，省读取次数）
+    async grid(id, range) {
+      const fields = 'sheets(data(rowData(values(formattedValue,userEnteredValue,effectiveValue))))';
+      const j = await call(`${SHEETS}/${id}?ranges=${enc(range)}&includeGridData=true&fields=${enc(fields)}`);
+      const rows = j.sheets?.[0]?.data?.[0]?.rowData || [];
+      const pick = (o) => o ? (o.formulaValue ?? o.stringValue ?? o.numberValue ?? o.boolValue ?? '') : '';
+      const fmt = [], raw = [], formula = [];
+      rows.forEach(r => { const v = r.values || []; fmt.push(v.map(c => c.formattedValue ?? '')); raw.push(v.map(c => pick(c.effectiveValue))); formula.push(v.map(c => pick(c.userEnteredValue))); });
+      return { fmt, raw, formula };
+    },
     async details(id, range) {
       const fields = 'sheets(properties.title,data(startRow,startColumn,rowData(values(formattedValue,note,effectiveFormat(textFormat(foregroundColorStyle,bold,strikethrough),backgroundColorStyle)))))';
       return call(`${SHEETS}/${id}?ranges=${enc(range)}&includeGridData=true&fields=${enc(fields)}`);

@@ -75,7 +75,7 @@ const getRange = (range, render) => {
   for (let r = r1; r <= r2; r++) { const row = []; for (let c = c1; c <= c2; c++) { const v = sheet[core.numToCol(c) + r]; row.push(v === undefined ? '' : (render === 'FORMATTED_VALUE' && typeof v === 'number' ? v.toLocaleString('en-US') : v)); } out.push(row); }
   return out;
 };
-let corrupt = false;
+let corrupt = false, corruptGrid = false;
 globalThis.fetch = async (url, init = {}) => {
   const u = new URL(url);
   const j = (x, s = 200) => ({ ok: s < 300, status: s, text: async () => JSON.stringify(x), json: async () => x });
@@ -86,6 +86,17 @@ globalThis.fetch = async (url, init = {}) => {
     let r = 1; while (sheet['A' + r] !== undefined) r++;
     setRange({ col: 1, row: r }, body.values);
     return j({ updates: { updatedRange: `${range.split('!')[0]}!A${r}:${core.numToCol(body.values[0].length)}${r + body.values.length - 1}`, updatedRows: body.values.length } });
+  }
+  if (u.pathname.endsWith('/values:batchGet')) {
+    const rs = u.searchParams.getAll('ranges');
+    return j({ valueRanges: rs.map(range => ({ range, values: getRange(range, u.searchParams.get('valueRenderOption')) })) });
+  }
+  if (u.searchParams.get('includeGridData') && (u.searchParams.get('fields') || '').includes('userEnteredValue')) {
+    const range = u.searchParams.get('ranges');
+    const f = getRange(range, 'FORMATTED_VALUE'), raw = getRange(range, 'UNFORMATTED_VALUE');
+    const fo = getRange(range, 'FORMULA');
+    const cell = (x) => typeof x === 'number' ? { numberValue: x } : String(x).startsWith('=') ? { formulaValue: x } : { stringValue: String(x) };
+    return j({ sheets: [{ data: [{ rowData: f.map((row, r) => ({ values: row.map((v, c) => ({ formattedValue: corruptGrid ? 'B1' : String(v), effectiveValue: cell(raw[r][c]), userEnteredValue: cell(fo[r][c]) })) })) }] }] });
   }
   if (u.pathname.includes('/values/')) {
     const range = decodeURIComponent(u.pathname.split('/values/')[1]);
