@@ -1,7 +1,7 @@
 // dsh-google-sheets — DSH 插件入口：把 Google 表格接口注册成 gsheets_* 工具。
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails } from './core.js';
+import { dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
 
 export const name = 'google-sheets';
 // 等 DSH 的工具服务就绪后再加载，否则注册不上
@@ -67,28 +67,70 @@ export function apply(ctx, config = {}) {
     },
     {
       name: 'gsheets_read',
-      description: '读一个区域的值。range 用 A1 写法，带页名，如 "PSI!A1:H50"。render: formatted（默认，和表上看到的一样）/ raw（数字不带格式）/ formula（看公式）。details=true 时另外返回带批注、字体颜色、底色、删除线的单元格（只列有这些标记的格子）；表里用批注或红字标注重要信息时要开。只读需要的范围，不要整页读。',
+      description: '读一个区域的值。range 用 A1 写法，带页名，如 "PSI!A1:H50"。返回的 rowNumbers 是每一行在表上的真实行号——要写哪一行就用它，不要自己数下标；按关键列找行优先用 gsheets_locate。render: formatted（默认，和表上看到的一样）/ raw（数字不带格式）/ formula（看公式）。details=true 时另外返回带批注、字体颜色、底色、删除线的单元格（只列有这些标记的格子）；表里用批注或红字标注重要信息时要开。只读需要的范围，不要整页读。',
       parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, render: { type: 'string', enum: ['formatted', 'raw', 'formula'] }, details: { type: 'boolean' } }, required: ['spreadsheet', 'range'], additionalProperties: false },
       async execute(a) {
         const id = sheetId(a.spreadsheet);
         const r = await g.get(id, a.range, { raw: 'UNFORMATTED_VALUE', formula: 'FORMULA' }[a.render] || 'FORMATTED_VALUE');
         let cells = 0; const values = [];
         for (const row of r.values) { if (cells + row.length > maxCells) break; values.push(row); cells += row.length; }
-        const res = { range: r.range, rows: values.length, values, truncated: values.length < r.values.length };
+        const st = rangeStart(r.range || a.range);
+        const res = { range: r.range, rows: values.length, firstRow: st.row, firstColumn: numToCol(st.col), rowNumbers: values.map((_, i) => st.row + i), values, truncated: values.length < r.values.length };
         if (a.details) Object.assign(res, { marked: flattenDetails(await g.details(id, a.range), maxCells) });
         return res;
       },
     },
     {
+      name: 'gsheets_locate',
+      description: '按关键列的值找行，返回真实行号（写表前用它定位，不要自己数）。match 写 {"列字母": "值"}，几列都要相等才算（不分大小写、忽略首尾空格），例如 {"A":"PI-JEPH-20261158","J":"CH-391B-A"}。show 写要一起返回的列，如 "A:P"。next_empty 写一组列（如 "B:J"）时，另外返回这几列最后一个有内容的行之后的第一行（新增记录写在这里）。',
+      parameters: { type: 'object', properties: { spreadsheet, sheet: { type: 'string', description: '页名' }, match: { type: 'object', additionalProperties: true }, show: { type: 'string' }, next_empty: { type: 'string' } }, required: ['spreadsheet', 'sheet'], additionalProperties: false },
+      async execute(a) {
+        const id = sheetId(a.spreadsheet), q = quoteSheet(a.sheet), res = {};
+        const keys = Object.entries(a.match || {}).map(([c, v]) => [c.toUpperCase().replace(/[^A-Z]/g, ''), v]);
+        if (keys.length) {
+          const cols = await Promise.all(keys.map(([c]) => g.get(id, `${q}!${c}:${c}`, 'FORMATTED_VALUE')));
+          const n = Math.max(...cols.map(x => x.values.length));
+          const rows = [];
+          for (let i = 0; i < n; i++) if (keys.every(([, v], k) => norm(cols[k].values[i]?.[0]) === norm(v))) rows.push(i + 1);
+          const show = (a.show || 'A:Z').toUpperCase().split(':');
+          const matches = [];
+          for (const row of rows.slice(0, 20)) {
+            const v = (await g.get(id, `${q}!${show[0]}${row}:${show[1] || show[0]}${row}`, 'FORMATTED_VALUE')).values[0] || [];
+            const o = {}; v.forEach((x, i) => { o[numToCol(colToNum(show[0]) + i)] = x; });
+            matches.push({ row, values: o });
+          }
+          Object.assign(res, { count: rows.length, matches, note: rows.length === 1 ? '找到唯一一行' : rows.length ? '找到多行，先弄清是哪一行再写' : '没找到，不要写' });
+        }
+        if (a.next_empty) {
+          const [c1, c2] = a.next_empty.toUpperCase().split(':');
+          const v = (await g.get(id, `${q}!${c1}:${c2 || c1}`, 'FORMATTED_VALUE')).values;
+          let last = 0; v.forEach((r, i) => { if ((r || []).some(x => String(x ?? '').trim() !== '')) last = i + 1; });
+          const lastVals = last ? (await g.get(id, `${q}!A${last}:${c2 || c1}${last}`, 'FORMATTED_VALUE')).values[0] : [];
+          Object.assign(res, { lastFilledRow: last, lastFilledValues: lastVals, nextEmptyRow: last + 1 });
+        }
+        return res;
+      },
+    },
+    {
       name: 'gsheets_write',
-      description: '把二维数组写进一个区域（覆盖原内容），写完自动回读比对，verified=false 表示有格子没写对，mismatches 列出哪格写了什么、表上是什么。mode: user（默认，和手打一样，日期、数字、公式会被识别）/ raw（原样存成文字）。range 只写起点也行，如 "PSI!B5"。',
-      parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, values: grid, mode: { type: 'string', enum: ['user', 'raw'] } }, required: ['spreadsheet', 'range', 'values'], additionalProperties: false },
+      description: '把二维数组写进一个区域（覆盖原内容），写完自动回读比对，verified=false 表示有格子没写对。写前自动检查，不通过就一格都不写（written=false，problems 说明原因）：①range 写了终点时，区域大小必须和 values 完全一样；②目标格里原来是公式的不覆盖（=DATE(年,月,日) 这种日期除外；确实要改公式才用 allow_formula_overwrite）；③expect 填了就先核对那些格子，例如 {"C83":"PJ-202607-013","G83":"CH-391B-A"}，对不上说明找错行。mode: user（默认，日期、数字、公式会被识别）/ raw（原样存成文字）。',
+      parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, values: grid, mode: { type: 'string', enum: ['user', 'raw'] }, expect: { type: 'object', additionalProperties: true, description: '写前要核对的格子：{"格子":"应有的值"}' }, allow_formula_overwrite: { type: 'boolean' } }, required: ['spreadsheet', 'range', 'values'], additionalProperties: false },
       async execute(a) {
         const id = sheetId(a.spreadsheet);
         if (!Array.isArray(a.values) || !a.values.length) throw new Error('values 不能为空');
+        const st = rangeStart(a.range), width = Math.max(...a.values.map(r => (r || []).length));
+        const target = `${st.sheet ? st.sheet + '!' : ''}${cellName(st, 0, 0)}:${cellName(st, a.values.length - 1, width - 1)}`;
+        const fo = (await g.get(id, target, 'FORMULA')).values;
+        const expectCells = a.expect || {}, expectGot = {};
+        for (const cell of Object.keys(expectCells)) {
+          const c = cell.toUpperCase().replace(/^.*!/, '');
+          expectGot[cell.toUpperCase()] = (await g.get(id, `${st.sheet ? st.sheet + '!' : ''}${c}`, 'FORMATTED_VALUE')).values?.[0]?.[0];
+        }
+        const problems = preWriteProblems({ range: a.range, values: a.values, formulas: fo, expectCells: Object.fromEntries(Object.entries(expectCells).map(([k, v]) => [k.toUpperCase(), v])), expectGot, allowFormula: !!a.allow_formula_overwrite });
+        if (problems.length) return { written: false, verified: false, problems };
         const r = await g.update(id, a.range, a.values, MODE[a.mode] || MODE.user);
         const v = await verify(id, r.updatedRange || a.range, a.values);
-        return { updatedRange: r.updatedRange, updatedCells: r.updatedCells, ...v };
+        return { written: true, updatedRange: r.updatedRange, updatedCells: r.updatedCells, ...v };
       },
     },
     {

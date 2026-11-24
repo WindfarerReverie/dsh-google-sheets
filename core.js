@@ -25,6 +25,37 @@ export function rangeStart(range) {
   return { sheet, col: m ? colToNum(m[1]) : 1, row: m ? Number(m[2]) : 1 };
 }
 export function cellName(start, r, c) { return `${numToCol(start.col + c)}${start.row + r}`; }
+// "S!B3:D9" → { col: 4, row: 9 }；没写终点返回 null
+export function rangeEnd(range) {
+  const s = String(range); const i = s.lastIndexOf('!');
+  const m = (i >= 0 ? s.slice(i + 1) : s).match(/:\$?([A-Za-z]+)\$?(\d+)$/);
+  return m ? { col: colToNum(m[1]), row: Number(m[2]) } : null;
+}
+export function quoteSheet(name) { const n = String(name || '').replace(/^'|'$/g, '').replace(/'/g, "''"); return `'${n}'`; }
+// 当成"普通值"的公式：=DATE(2026,11,25) 这类日期常量，可以被新日期覆盖
+export const isValueFormula = (f) => /^=DATE\(\s*\d+\s*,\s*\d+\s*,\s*\d+\s*\)$/i.test(String(f || '').trim());
+export const norm = (v) => String(v ?? '').trim().toLowerCase();
+// 写前检查：区域大小与数据一致、不覆盖公式、expect 的格子对得上。返回问题清单（空＝可以写）
+export function preWriteProblems({ range, values, formulas, expectCells = {}, expectGot = {}, allowFormula = false }) {
+  const out = [];
+  const st = rangeStart(range), end = rangeEnd(range);
+  const width = Math.max(...values.map(r => (r || []).length));
+  if (end) {
+    const rows = end.row - st.row + 1, cols = end.col - st.col + 1;
+    if (rows !== values.length || cols !== width || values.some(r => (r || []).length !== cols))
+      out.push({ problem: 'size', detail: `区域 ${rows} 行×${cols} 列，数据 ${values.length} 行×${width} 列，不一致。要写不连着的列就分开写，每次区域大小和数据完全一样。` });
+  }
+  if (!allowFormula) values.forEach((row, r) => (row || []).forEach((v, c) => {
+    const cur = formulas?.[r]?.[c];
+    if (typeof cur === 'string' && cur.startsWith('=') && !isValueFormula(cur) && String(v ?? '') !== cur)
+      out.push({ problem: 'formula', cell: cellName(st, r, c), current: cur, detail: '这一格是公式，不能覆盖' });
+  }));
+  for (const [cell, want] of Object.entries(expectCells)) {
+    const got = expectGot[cell.toUpperCase()];
+    if (norm(got) !== norm(want)) out.push({ problem: 'expect', cell, want, got: got ?? '', detail: '这一格和预期不一样，可能找错行了' });
+  }
+  return out;
+}
 
 // 接受表格 ID 或完整网址
 export function sheetId(x) {
