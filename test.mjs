@@ -160,3 +160,14 @@ assert.equal(r.count, 0);
 ok('写前防护：区域大小不符、覆盖公式、找错行都拒写；按关键列定位和找下一空行');
 
 console.log(`\n全部通过：${pass} 项`);
+
+// readonly list: both files, comments, short junk ignored
+{
+  const d = mkdtempSync(join(tmpdir(), 'ro-')), dl = mkdtempSync(join(tmpdir(), 'dl-'));
+  assert.equal(core.readonlyIds(d, dl).size, 0);
+  writeFileSync(join(d, 'readonly-ids.txt'), '1kxTnmzDnKXwhs3xxBh9s6aK2bxnbXIpDDoARpC9TzFg # Sales Record\n# comment only\nshort\n');
+  writeFileSync(join(dl, 'dsh-gsheets-readonly.txt'), '19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc\r\n');
+  const ids = core.readonlyIds(d, dl);
+  assert.equal(ids.size, 2); assert.ok(ids.has('1kxTnmzDnKXwhs3xxBh9s6aK2bxnbXIpDDoARpC9TzFg')); assert.ok(ids.has('19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc'));
+  console.log('ok readonly ids');
+}

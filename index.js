@@ -1,7 +1,7 @@
 // dsh-google-sheets — DSH 插件入口：把 Google 表格接口注册成 gsheets_* 工具。
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
+import { readonlyIds, dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
 
 export const name = 'google-sheets';
 // 等 DSH 的工具服务就绪后再加载，否则注册不上
@@ -33,6 +33,8 @@ export function apply(ctx, config = {}) {
     }
   };
   const g = api(token);
+  const readonly = (id) => readonlyIds(dir, config.downloadsDir).has(id)
+    ? ['这张表在只读名单里（公司正本），本插件不写。要改请交给公司的写表机器人或正式值班。'] : null;
 
   // 写入后立即回读三种形式比对
   async function verify(id, range, values) {
@@ -116,6 +118,7 @@ export function apply(ctx, config = {}) {
       parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, values: grid, mode: { type: 'string', enum: ['user', 'raw'] }, expect: { type: 'object', additionalProperties: true, description: '写前要核对的格子：{"格子":"应有的值"}' }, allow_formula_overwrite: { type: 'boolean' } }, required: ['spreadsheet', 'range', 'values'], additionalProperties: false },
       async execute(a) {
         const id = sheetId(a.spreadsheet);
+        const ro = readonly(id); if (ro) return { written: false, verified: false, problems: ro };
         if (!Array.isArray(a.values) || !a.values.length) throw new Error('values 不能为空');
         const st = rangeStart(a.range), width = Math.max(...a.values.map(r => (r || []).length));
         const target = `${st.sheet ? st.sheet + '!' : ''}${cellName(st, 0, 0)}:${cellName(st, a.values.length - 1, width - 1)}`;
@@ -137,6 +140,7 @@ export function apply(ctx, config = {}) {
       parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, values: grid, mode: { type: 'string', enum: ['user', 'raw'] } }, required: ['spreadsheet', 'range', 'values'], additionalProperties: false },
       async execute(a) {
         const id = sheetId(a.spreadsheet);
+        const ro = readonly(id); if (ro) return { written: false, verified: false, problems: ro };
         const r = await g.append(id, a.range, a.values, MODE[a.mode] || MODE.user);
         const range = r.updates?.updatedRange;
         const v = range ? await verify(id, range, a.values) : { verified: false, mismatches: [{ cell: '?', wrote: '', got: '接口没返回写入位置' }] };

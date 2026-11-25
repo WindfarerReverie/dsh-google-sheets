@@ -60,3 +60,11 @@ Setup: create your own Google Cloud project, enable the Sheets and Drive APIs, c
 Scopes: `spreadsheets` and `drive.metadata.readonly`. Data flows only between your machine and Google. See the [privacy policy](https://windfarerreverie.github.io/dsh-google-sheets/privacy.html).
 
 MIT License.
+
+## 只读名单（0.2.2 起）
+有些表格（比如公司正本）只许公司自己的程序改，不许 AI 直接写。把它们的表格 ID 一行一个写进下面任一个文件，`gsheets_write`、`gsheets_append` 遇到就拒写（返回 written=false 和原因），读不受影响；改了文件立即生效、不用重启：
+- 数据目录下的 `readonly-ids.txt`
+- 「下载」文件夹里的 `dsh-gsheets-readonly.txt`
+
+`#` 后面是注释，例如 `1kxTnmzD...  # Sales Record`。
+

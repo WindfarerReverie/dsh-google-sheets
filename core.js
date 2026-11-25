@@ -99,6 +99,23 @@ export function findClientFile(dir, downloads = join(homedir(), 'Downloads')) {
   return own;
 }
 
+// Spreadsheets this plugin must never write (masters that only the company's robot may change). One ID per line,
+// "#" starts a comment. Read from <dataDir>/readonly-ids.txt and <Downloads>/dsh-gsheets-readonly.txt on every write,
+// so adding a line takes effect at once without a restart.
+export function readonlyIds(dir, downloads = join(homedir(), 'Downloads')) {
+  const ids = new Set();
+  for (const f of [join(dir, 'readonly-ids.txt'), join(downloads, 'dsh-gsheets-readonly.txt')]) {
+    try {
+      if (!existsSync(f)) continue;
+      for (const line of readFileSync(f, 'utf8').split(/\r?\n/)) {
+        const id = line.replace(/#.*/, '').trim();
+        if (/^[\w-]{20,}$/.test(id)) ids.add(id);
+      }
+    } catch {}
+  }
+  return ids;
+}
+
 export function readClient(file) {
   const j = JSON.parse(readFileSync(file, 'utf8'));
   const c = j.installed || j.web || j;
