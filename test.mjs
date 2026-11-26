@@ -177,3 +177,16 @@ console.log(`\n全部通过：${pass} 项`);
   assert.equal(ids.size, 2); assert.ok(ids.has('1kxTnmzDnKXwhs3xxBh9s6aK2bxnbXIpDDoARpC9TzFg')); assert.ok(ids.has('19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc'));
   console.log('ok readonly ids');
 }
+
+// 0.3.2: "+<id>!<tab>[!<last col>]" opens one tab of a read-only workbook for appending
+{
+  const { mkdtempSync, writeFileSync } = await import('node:fs'); const { tmpdir } = await import('node:os'); const { join } = await import('node:path');
+  const { readonlyList, readonlyIds } = await import('./core.js');
+  const d = mkdtempSync(join(tmpdir(), 'ro-'));
+  writeFileSync(join(d, 'readonly-ids.txt'), '19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc # log\n+19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc!DSH交办!C\n');
+  const l = readonlyList(d, join(d, 'none'));
+  if (!l.ids.has('19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc')) throw new Error('id still read-only');
+  if (l.append.get('19s3BFaSmRqkvWkLHDD8mEgvfdhDc5THyjNi0mzi7oyc')?.get('DSH交办') !== 3) throw new Error('append tab');
+  if (readonlyIds(d, join(d, 'none')).size !== 1) throw new Error('readonlyIds unchanged');
+  console.log('ok readonly append tab');
+}

@@ -1,7 +1,7 @@
 // dsh-google-sheets — DSH 插件入口：把 Google 表格接口注册成 gsheets_* 工具。
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { DOCS_SCOPE, readonlyIds, dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
+import { DOCS_SCOPE, readonlyIds, readonlyList, dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
 
 export const name = 'google-sheets';
 // 等 DSH 的工具服务就绪后再加载，否则注册不上
@@ -159,7 +159,14 @@ export function apply(ctx, config = {}) {
       parameters: { type: 'object', properties: { spreadsheet, range: { type: 'string' }, values: grid, mode: { type: 'string', enum: ['user', 'raw'] } }, required: ['spreadsheet', 'range', 'values'], additionalProperties: false },
       async execute(a) {
         const id = sheetId(a.spreadsheet);
-        const ro = readonly(id); if (ro) return { written: false, verified: false, problems: ro };
+        const ro = readonly(id);
+        if (ro) {
+          // a read-only workbook may open one tab for appending ("+<id>!<tab>" in the read-only list)
+          const tab = rangeStart(a.range).sheet, open = readonlyList(dir, config.downloadsDir).append.get(id);
+          if (!tab || !open || !open.has(tab)) return { written: false, verified: false, problems: ro };
+          const last = open.get(tab), width = Math.max(0, ...(a.values || []).map(r => (r || []).length));
+          if (last && width > last) return { written: false, verified: false, problems: [`「${tab}」只能填前 ${numToCol(last)} 列（A–${numToCol(last)}），后面的列留给别人填。`] };
+        }
         const r = await g.append(id, a.range, a.values, MODE[a.mode] || MODE.user);
         const range = r.updates?.updatedRange;
         const v = range ? await verify(id, range, a.values) : { verified: false, mismatches: [{ cell: '?', wrote: '', got: '接口没返回写入位置' }] };

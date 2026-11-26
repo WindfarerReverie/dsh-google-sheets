@@ -105,17 +105,26 @@ export function findClientFile(dir, downloads = join(homedir(), 'Downloads')) {
 // "#" starts a comment. Read from <dataDir>/readonly-ids.txt and <Downloads>/dsh-gsheets-readonly.txt on every write,
 // so adding a line takes effect at once without a restart.
 export function readonlyIds(dir, downloads = join(homedir(), 'Downloads')) {
-  const ids = new Set();
+  return readonlyList(dir, downloads).ids;
+}
+// A line "+<id>!<tab>" (optionally "+<id>!<tab>!<last column>", e.g. "+19s3…!DSH交办!C") opens ONE tab of a read-only
+// spreadsheet for gsheets_append only — new rows at the bottom, never overwriting, nothing past the last column.
+// JEPH (John 2026-11-26 16:47, A): DSH hands work to the Claude duty by appending a row on 「DSH交办」, while the rest of
+// that workbook (群发outbox, 汇报登记) stays closed.
+export function readonlyList(dir, downloads = join(homedir(), 'Downloads')) {
+  const ids = new Set(), append = new Map();
   for (const f of [join(dir, 'readonly-ids.txt'), join(downloads, 'dsh-gsheets-readonly.txt')]) {
     try {
       if (!existsSync(f)) continue;
       for (const line of readFileSync(f, 'utf8').split(/\r?\n/)) {
-        const id = line.replace(/#.*/, '').trim();
-        if (/^[\w-]{20,}$/.test(id)) ids.add(id);
+        const t = line.replace(/#.*/, '').trim();
+        const m = t.match(/^\+([\w-]{20,})!([^!]+?)(?:!([A-Za-z]{1,3}))?$/);
+        if (m) { if (!append.has(m[1])) append.set(m[1], new Map()); append.get(m[1]).set(m[2].trim(), m[3] ? colToNum(m[3].toUpperCase()) : 0); continue; }
+        if (/^[\w-]{20,}$/.test(t)) ids.add(t);
       }
     } catch {}
   }
-  return ids;
+  return { ids, append };
 }
 
 export function readClient(file) {
