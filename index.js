@@ -18,7 +18,7 @@ export function apply(ctx, config = {}) {
   const dir = dataDir(config.dataDir);
   const store = tokenStore(dir);
   const maxCells = Number(config.maxCells) || 5000;
-  let authing = null;
+  let authing = null, authUrl = null;
 
   const client = () => {
     const f = findClientFile(dir, config.downloadsDir);
@@ -67,9 +67,11 @@ export function apply(ctx, config = {}) {
         // 旧授权没有读 Drive 文档的权限（0.3.0 起要 drive.readonly）：重新授权一次
         const hasDocs = String(store.load()?.scope || '').includes(DOCS_SCOPE);
         if (hasDocs) { try { await accessToken(client(), store); return { connected: true }; } catch (e) { if (e.message !== 'NOT_AUTHORIZED') throw e; } }
-        authing ??= authorize(client(), { onUrl: (u) => log.info('google-sheets: 授权页 ' + u.slice(0, 80) + '…') }).then(t => { store.save(t); return t; }).finally(() => { authing = null; });
-        await authing;
-        return { connected: true, note: '授权完成' };
+        authing ??= authorize(client(), { onUrl: (u) => { authUrl = u; log.info('google-sheets: 授权页 ' + u.slice(0, 80) + '…'); } }).then(t => { store.save(t); return t; }).finally(() => { authing = null; authUrl = null; });
+        // 不一直卡住：8 秒内没授权完就把授权页网址交回去，用户（或代操作的人）在浏览器打开、点允许后再调用一次
+        const done = await Promise.race([authing.then(() => true), new Promise(r => setTimeout(() => r(false), 8000))]);
+        if (done) return { connected: true, note: '授权完成' };
+        return { connected: false, waiting: true, url: authUrl, note: '在浏览器打开 url、选账号、点“允许”，完成后再调用一次 gsheets_connect 确认' };
       },
     },
     {
