@@ -1,6 +1,6 @@
 {
   "name": "dsh-google-sheets",
-  "version": "0.2.2",
+  "version": "0.3.0",
   "description": "Google Sheets for DeepSeek Harness (DSH): find, read (with notes & colors), write, append, create — every write is read back and verified. DSH 直连 Google 表格官方接口，写后自动回读核对。",
   "type": "module",
   "main": "index.js",

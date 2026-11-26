@@ -2,14 +2,14 @@
 <style>body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;max-width:760px;margin:48px auto;padding:0 20px;line-height:1.7;color:#222}</style></head>
 <body><h1>隐私政策 / Privacy Policy</h1><p>最后更新 / Last updated: 2026-11-24</p>
 <h2>中文</h2>
-<p>dsh-google-sheets 是运行在用户自己电脑上的开源插件。经用户授权后，它使用 Google 表格接口（spreadsheets）读写用户指定的表格，并使用 Drive 文件名只读权限（drive.metadata.readonly）按名字查找表格。</p>
+<p>dsh-google-sheets 是运行在用户自己电脑上的开源插件。经用户授权后，它使用 Google 表格接口（spreadsheets）读写用户指定的表格，并使用 Drive 只读权限（drive.readonly）按名字查找表格、在线读取用户指定的 Google 文档；不修改、不删除 Drive 上的任何文件。</p>
 <ul><li>授权令牌只保存在用户电脑的 <code>~/.dsh-gsheets/</code> 目录，不上传到任何服务器。</li>
 <li>表格数据只在用户电脑与 Google 之间传输；插件作者不收集、不存储、不分享任何用户数据。</li>
 <li>插件读取到的数据会交给用户自己配置的 AI 模型处理，这一部分受用户所选模型服务商的隐私政策约束。</li>
 <li>用户可随时在 <a href="https://myaccount.google.com/permissions">Google 账号权限页</a> 撤销授权，并删除 <code>~/.dsh-gsheets/</code> 目录。</li></ul>
 <p>本插件对 Google 用户数据的使用遵守 <a href="https://developers.google.com/terms/api-services-user-data-policy">Google API 服务用户数据政策</a>，包括其中的有限使用要求。</p>
 <h2>English</h2>
-<p>dsh-google-sheets is an open-source plugin that runs on the user's own computer. With the user's consent it uses the Google Sheets API (spreadsheets scope) to read and write spreadsheets the user specifies, and Drive metadata read-only access (drive.metadata.readonly) to find spreadsheets by name.</p>
+<p>dsh-google-sheets is an open-source plugin that runs on the user's own computer. With the user's consent it uses the Google Sheets API (spreadsheets scope) to read and write spreadsheets the user specifies, and Drive read-only access (drive.readonly) to find spreadsheets by name and read Google Docs the user points to; it never changes or deletes anything on Drive.</p>
 <ul><li>OAuth tokens are stored only on the user's computer in <code>~/.dsh-gsheets/</code> and are never uploaded.</li>
 <li>Spreadsheet data travels only between the user's computer and Google. The author collects, stores and shares no user data.</li>
 <li>Data the plugin reads is passed to the AI model the user has configured, under that provider's privacy policy.</li>

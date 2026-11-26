@@ -57,6 +57,8 @@ const store = core.tokenStore(dir); store.save({ ...t, expiry: 0 });
 assert.equal(await core.accessToken(client, store, fakeFetch), 'AT2');
 assert.equal(store.load().refresh_token, 'RT1');
 ok('授权（PKCE、本机回调）和令牌自动续期');
+assert.ok(core.SCOPES.includes(core.DOCS_SCOPE), '0.3.0 要只读 Drive 权限');
+store.save({ ...store.load(), scope: core.SCOPES.join(' ') });
 
 // 5. 插件整体：模拟表格接口
 const sheet = {}; // "A1" → value
@@ -108,6 +110,8 @@ globalThis.fetch = async (url, init = {}) => {
     }
     return j({ range, values: getRange(range, u.searchParams.get('valueRenderOption')) });
   }
+  if (u.hostname === 'www.googleapis.com' && /\/export$/.test(u.pathname)) return new Response('# 02 报价规则\n- 付款群只发存款单', { status: 200 });
+  if (u.hostname === 'www.googleapis.com' && /\/files\/DOC1234567890123456789012345$/.test(u.pathname)) return j({ id: 'DOC1234567890123456789012345', name: '02 报价', mimeType: 'application/vnd.google-apps.document', modifiedTime: 't', webViewLink: 'https://d' });
   if (u.hostname === 'www.googleapis.com') return j({ files: [{ id: 'F1', name: '销售台账', modifiedTime: 'x', webViewLink: 'https://x' }] });
   if (init.method === 'POST') return j({ spreadsheetId: 'NEW', spreadsheetUrl: 'https://new', properties: { title: JSON.parse(init.body).properties.title }, sheets: [{ properties: { title: 'Sheet1' } }] });
   if (u.searchParams.get('includeGridData')) return j({ sheets: [{ data: [{ startRow: 0, startColumn: 1, rowData: [{ values: [{ formattedValue: '2,700', note: 'Promo price. Regular 2,900, until 31 Dec 2026', effectiveFormat: { textFormat: { foregroundColorStyle: { rgbColor: { red: 1 } } } } }, { formattedValue: 'x', effectiveFormat: { textFormat: { foregroundColorStyle: { rgbColor: {} } } } }] }] }] }] });
@@ -116,8 +120,10 @@ globalThis.fetch = async (url, init = {}) => {
 const { apply } = await import('./index.js');
 const tools = {};
 apply({ logger: { info() {}, warn: console.log }, get: (k) => (k === 'tools' ? { register: (d) => { tools[d.name] = d; } } : undefined) }, { dataDir: dir, downloadsDir: dl });
-assert.deepEqual(Object.keys(tools).sort(), ['gsheets_append', 'gsheets_connect', 'gsheets_create', 'gsheets_find', 'gsheets_info', 'gsheets_locate', 'gsheets_read', 'gsheets_write']);
+assert.deepEqual(Object.keys(tools).sort(), ['gdocs_read', 'gdrive_list', 'gsheets_append', 'gsheets_connect', 'gsheets_create', 'gsheets_find', 'gsheets_info', 'gsheets_locate', 'gsheets_read', 'gsheets_write']);
 assert.deepEqual(await tools.gsheets_connect.execute({}), { connected: true });
+{ const d = await tools.gdocs_read.execute({ file: 'https://docs.google.com/document/d/DOC1234567890123456789012345/edit' }); assert.equal(d.title, '02 报价'); assert.match(d.text, /只发存款单/); }
+{ const l = await tools.gdrive_list.execute({ folder: 'FOLDER123456789012345678901' }); assert.equal(l.files[0].name, '销售台账'); }
 let r = await tools.gsheets_write.execute({ spreadsheet: 'SID', range: 'S!A1', values: [['DSH 测试', '2026-11-24'], ['数量', 2700]] });
 assert.equal(r.verified, true, JSON.stringify(r));
 corrupt = true;

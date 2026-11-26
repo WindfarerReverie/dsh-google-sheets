@@ -1,7 +1,7 @@
 // dsh-google-sheets — DSH 插件入口：把 Google 表格接口注册成 gsheets_* 工具。
 import { writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { readonlyIds, dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
+import { DOCS_SCOPE, readonlyIds, dataDir, findClientFile, readClient, tokenStore, accessToken, authorize, api, sheetId, rangeStart, compareGrid, flattenDetails, cellName, colToNum, numToCol, quoteSheet, preWriteProblems, norm } from './core.js';
 
 export const name = 'google-sheets';
 // 等 DSH 的工具服务就绪后再加载，否则注册不上
@@ -43,13 +43,30 @@ export function apply(ctx, config = {}) {
     return { verified: bad.length === 0, mismatches: bad.slice(0, 50), readBack: fmt.slice(0, 20) };
   }
 
+  const fileId = (v) => { const m = String(v || '').match(/[-\w]{25,}/); if (!m) throw new Error('看不懂的文件或文件夹：给 ID 或网址'); return m[0]; };
+  const needDocs = () => { if (!String(store.load()?.scope || '').includes(DOCS_SCOPE)) throw new Error('还没授权读 Drive 文档：先调用 gsheets_connect，让用户在弹出的页面点“允许”（多了一项“查看 Drive 文件”）。'); };
+  const maxChars = Number(config.maxDocChars) || 120000;
   const defs = [
+    {
+      name: 'gdocs_read',
+      description: '在线读 Google Drive 里一份 Google 文档的最新版（只读，不下载到本机），返回全文（Markdown）。file 写文件 ID 或网址。知识库这类规则文档用它读；不要用它改任何东西。',
+      parameters: { type: 'object', properties: { file: { type: 'string' } }, required: ['file'], additionalProperties: false },
+      async execute(a) { needDocs(); const d = await g.readDoc(fileId(a.file)); if (d.text && d.text.length > maxChars) { d.text = d.text.slice(0, maxChars); d.truncated = true; } return d; },
+    },
+    {
+      name: 'gdrive_list',
+      description: '列出 Google Drive 某个文件夹里的文件（只读）：folder 写文件夹 ID 或网址；query 写名字里包含的字（可只写 query 全盘按名字找）。返回 id、名字、类型、修改时间。',
+      parameters: { type: 'object', properties: { folder: { type: 'string' }, query: { type: 'string' }, max: { type: 'integer' } }, additionalProperties: false },
+      async execute(a) { needDocs(); if (!a?.folder && !a?.query) throw new Error('给 folder 或 query'); return { files: await g.list(a.folder ? fileId(a.folder) : '', a.query || '', a.max || 50) }; },
+    },
     {
       name: 'gsheets_connect',
       description: '连接 Google 表格（第一次用或授权失效时）。会在用户电脑上打开 Google 授权页，用户点“允许”后返回。已连接就直接返回 connected。',
       parameters: { type: 'object', properties: {}, additionalProperties: false },
       async execute() {
-        try { await accessToken(client(), store); return { connected: true }; } catch (e) { if (e.message !== 'NOT_AUTHORIZED') throw e; }
+        // 旧授权没有读 Drive 文档的权限（0.3.0 起要 drive.readonly）：重新授权一次
+        const hasDocs = String(store.load()?.scope || '').includes(DOCS_SCOPE);
+        if (hasDocs) { try { await accessToken(client(), store); return { connected: true }; } catch (e) { if (e.message !== 'NOT_AUTHORIZED') throw e; } }
         authing ??= authorize(client(), { onUrl: (u) => log.info('google-sheets: 授权页 ' + u.slice(0, 80) + '…') }).then(t => { store.save(t); return t; }).finally(() => { authing = null; });
         await authing;
         return { connected: true, note: '授权完成' };

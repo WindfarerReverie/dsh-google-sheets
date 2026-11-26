@@ -37,7 +37,7 @@
 
 ## 权限与隐私
 
-只申请两个权限：表格读写（`spreadsheets`）和 Drive 文件名只读（`drive.metadata.readonly`，只用于按名字找表）。数据只在你的电脑和 Google 之间传输，插件不向任何第三方发送数据。详见 [隐私政策](https://windfarerreverie.github.io/dsh-google-sheets/privacy.html)。
+只申请两个权限：表格读写（`spreadsheets`）和 Drive 只读（`drive.readonly`，用于按名字找表、在线读 Google 文档；不改、不删 Drive 上的任何文件）。0.3.0 起多了读文档的工具 gdocs_read、gdrive_list，从旧版升级要重新授权一次。数据只在你的电脑和 Google 之间传输，插件不向任何第三方发送数据。详见 [隐私政策](https://windfarerreverie.github.io/dsh-google-sheets/privacy.html)。
 
 ## 测试
 
@@ -57,7 +57,7 @@ Tools: `gsheets_connect`, `gsheets_find`, `gsheets_info`, `gsheets_read`, `gshee
 
 Setup: create your own Google Cloud project, enable the Sheets and Drive APIs, create a **Desktop app** OAuth client, put the downloaded `client_secret_*.json` in your Downloads folder, install the plugin with `dsh plugin add`, restart DSH and ask it to connect Google Sheets. Tokens are stored locally in `~/.dsh-gsheets/`.
 
-Scopes: `spreadsheets` and `drive.metadata.readonly`. Data flows only between your machine and Google. See the [privacy policy](https://windfarerreverie.github.io/dsh-google-sheets/privacy.html).
+Scopes: `spreadsheets` and `drive.readonly` (find spreadsheets, read Google Docs online; nothing on Drive is changed or deleted). 0.3.0 adds gdocs_read and gdrive_list; upgrading asks for consent once. Data flows only between your machine and Google. See the [privacy policy](https://windfarerreverie.github.io/dsh-google-sheets/privacy.html).
 
 MIT License.
 

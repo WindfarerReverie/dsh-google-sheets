@@ -8,8 +8,10 @@ import { spawn } from 'node:child_process';
 
 export const SCOPES = [
   'https://www.googleapis.com/auth/spreadsheets',
-  'https://www.googleapis.com/auth/drive.metadata.readonly',
+  // 只读 Drive（含文件名）：读知识库等 Google 文档用（John 2026-11-26：DSH 要直接读 Drive，不另做副本）
+  'https://www.googleapis.com/auth/drive.readonly',
 ];
+export const DOCS_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 const SHEETS = 'https://sheets.googleapis.com/v4/spreadsheets';
 const DRIVE = 'https://www.googleapis.com/drive/v3/files';
 
@@ -196,6 +198,26 @@ export function api(getToken, fetchImpl = fetch) {
   }
   const enc = encodeURIComponent;
   return {
+    // 列出文件夹里的文件（只读）：folder 为空时按名字全盘找。返回 id、名字、类型、修改时间。
+    async list(folder, query, max = 50) {
+      const q = ['trashed=false'];
+      if (folder) q.push(`'${folder}' in parents`);
+      if (query) q.push(`name contains '${String(query).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
+      const j = await call(`${DRIVE}?` + new URLSearchParams({ q: q.join(' and '), pageSize: String(Math.min(max, 200)), orderBy: 'name', fields: 'files(id,name,mimeType,modifiedTime,webViewLink)', supportsAllDrives: 'true', includeItemsFromAllDrives: 'true' }));
+      return (j.files || []).map(f => ({ id: f.id, name: f.name, type: f.mimeType, modified: f.modifiedTime, url: f.webViewLink }));
+    },
+    // 在线读一份 Google 文档的最新版（导出成 Markdown，不落地）。不是 Google 文档的返回类型，不读内容。
+    async readDoc(id) {
+      const m = await call(`${DRIVE}/${id}?` + new URLSearchParams({ fields: 'id,name,mimeType,modifiedTime,webViewLink', supportsAllDrives: 'true' }));
+      if (m.mimeType !== 'application/vnd.google-apps.document') return { id, title: m.name, type: m.mimeType, modified: m.modifiedTime, text: null, note: '不是 Google 文档，这个工具只读 Google 文档' };
+      const tok = await getToken();
+      for (const type of ['text/markdown', 'text/plain']) {
+        const r = await fetchImpl(`${DRIVE}/${id}/export?mimeType=${encodeURIComponent(type)}`, { headers: { authorization: 'Bearer ' + tok } });
+        if (r.ok) return { id, title: m.name, modified: m.modifiedTime, url: m.webViewLink, format: type, text: await r.text() };
+        if (r.status !== 400) throw new Error(`Google ${r.status}：${(await r.text()).slice(0, 200)}`);
+      }
+      throw new Error('导出失败');
+    },
     async find(query, max = 10) {
       const q = ["mimeType='application/vnd.google-apps.spreadsheet'", 'trashed=false'];
       if (query) q.push(`name contains '${String(query).replace(/\\/g, '\\\\').replace(/'/g, "\\'")}'`);
